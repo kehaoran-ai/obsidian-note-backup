@@ -1,0 +1,25 @@
+{
+  "name": "obsidian-note-backup",
+  "version": "0.1.0",
+  "description": "笔记备份：只登录一次 GitHub，剩下的它自己做",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "test": "vitest run test/unit",
+    "test:github": "vitest run test/github"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "builtin-modules": "^5.4.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "node-diff3": "^3.2.1"
+  }
+}

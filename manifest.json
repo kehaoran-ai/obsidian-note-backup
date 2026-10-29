@@ -1,0 +1,9 @@
+{
+  "id": "note-backup",
+  "name": "笔记备份",
+  "version": "0.1.0",
+  "minAppVersion": "1.8.7",
+  "description": "只登录一次 GitHub，笔记自动备份、自动取回，电脑和手机保持一样。",
+  "author": "柯浩然",
+  "isDesktopOnly": false
+}
