@@ -41,9 +41,9 @@ export class GitHubApi {
   sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
   /** GitHub 限流(一次备份很多附件时会碰到)：按它说的时间等，最多重试 3 次 */
-  async raw(method: string, path: string, body?: unknown, accept = "application/vnd.github+json"): Promise<HttpResponse> {
+  async raw(method: string, path: string, body?: unknown, accept = "application/vnd.github+json", extra: Record<string, string> = {}): Promise<HttpResponse> {
     for (let attempt = 0; ; attempt++) {
-      const res = await this.once(method, path, body, accept);
+      const res = await this.once(method, path, body, accept, extra);
       const h = res.headers ?? {};
       const get = (k: string) => h[k] ?? h[k.toLowerCase()];
       const limited = res.status === 429 || (res.status === 403 && (get("Retry-After") || get("X-RateLimit-Remaining") === "0" || /rate limit/i.test(res.text)));
@@ -55,7 +55,7 @@ export class GitHubApi {
     }
   }
 
-  private async once(method: string, path: string, body: unknown, accept: string): Promise<HttpResponse> {
+  private async once(method: string, path: string, body: unknown, accept: string, extra: Record<string, string>): Promise<HttpResponse> {
     let res: HttpResponse;
     try {
       res = await this.http({
@@ -66,6 +66,7 @@ export class GitHubApi {
           Authorization: `Bearer ${this.token}`,
           "X-GitHub-Api-Version": "2022-11-28",
           ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...extra,
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
@@ -76,9 +77,9 @@ export class GitHubApi {
     return res;
   }
 
-  /** 2xx 返回 JSON；allow 里的状态码返回 null；其余抛 ApiError */
-  async json<T>(method: string, path: string, body?: unknown, allow: number[] = []): Promise<T | null> {
-    const res = await this.raw(method, path, body);
+  /** 2xx 返回 JSON；allow 里的状态码返回 null；其余抛 ApiError。extra 是附加的请求头 */
+  async json<T>(method: string, path: string, body?: unknown, allow: number[] = [], extra?: Record<string, string>): Promise<T | null> {
+    const res = await this.raw(method, path, body, undefined, extra);
     if (res.status >= 200 && res.status < 300) return (res.text ? JSON.parse(res.text) : null) as T;
     if (allow.includes(res.status)) return null;
     throw new ApiError(res.status, `GitHub ${res.status}: ${res.text.slice(0, 200)}`);

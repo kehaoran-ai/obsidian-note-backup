@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 无
- * [OUTPUT]: 同步引擎的全部数据形状：本地库、云端库、同步状态、同步记录、两边都改了
+ * [OUTPUT]: 同步引擎的全部数据形状：本地库、云端库、同步状态、同步记录、两边都改了、没写回的记录
  * [POS]: core 的契约层，engine / log / github / obsidian 四方都只依赖这里的形状
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -20,6 +20,8 @@ export interface LocalStore {
   list(): Promise<LocalEntry[]>;
   stat(path: string): Promise<LocalEntry | null>;
   read(path: string): Promise<Uint8Array>;
+  /** 绕开 Obsidian 的文件信息缓存直读磁盘；不存在返回 null。写回前用它核对外部进程有没有刚改过 */
+  peek(path: string): Promise<Uint8Array | null>;
   write(path: string, data: Uint8Array): Promise<void>;
   remove(path: string): Promise<void>;
 }
@@ -53,6 +55,8 @@ export interface RemoteStore {
     /** 用户点了暂停：在两次请求之间停下，抛 engine.Stopped */
     signal?: AbortSignal,
   ): Promise<{ commit: string; tree: string }>;
+  /** sha 是不是 than 的祖先：读到的分支头比上次自己推上去的还旧，说明读到了缓存 */
+  isBehind(sha: string, than: string): Promise<boolean>;
   /** 只做快进；别的设备抢先备份了就返回 false */
   moveHead(to: string, from: string): Promise<boolean>;
   /** 从 head 往回取提交，遇到 known 里的就停 */
@@ -111,7 +115,16 @@ export interface SyncState {
   /** 还没备份的改动是谁做的 */
   who: Record<string, Who>;
   clashes: Clash[];
+  /** 没写回本地的记录：changed 是写之前外部进程刚改过这篇，stale 是读到的分支头是旧的、整轮不写。最多留 100 条 */
+  skips: Skip[];
   last: { at: number; files: string[] } | null;
+}
+
+export interface Skip {
+  /** stale 是整轮没写，没有篇名 */
+  path: string | null;
+  at: number;
+  why: "changed" | "stale";
 }
 
 export const emptyState = (): SyncState => ({
@@ -122,5 +135,6 @@ export const emptyState = (): SyncState => ({
   hashes: {},
   who: {},
   clashes: [],
+  skips: [],
   last: null,
 });

@@ -1,7 +1,7 @@
 /**
  * [INPUT]: Obsidian 的 App(vault、fileManager)
  * [OUTPUT]: VaultStore 把笔记库包成引擎认的 LocalStore
- * [POS]: obsidian 层的本地读写。只走 vault 接口，电脑和手机同一套；删除进回收站，不直接抹掉
+ * [POS]: obsidian 层的本地读写。只走 vault 接口，电脑和手机同一套；peek 绕开文件信息缓存直读磁盘；删除进回收站，不直接抹掉
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { App, normalizePath, TFile, TFolder } from "obsidian";
@@ -30,6 +30,13 @@ export class VaultStore implements LocalStore {
     const f = this.file(path);
     if (!f) throw new Error(`找不到 ${path}`);
     return new Uint8Array(await this.app.vault.readBinary(f));
+  }
+
+  /* TFile.stat 是 Obsidian 的缓存，外部进程刚写完时还是旧的；adapter 直接问磁盘 */
+  async peek(path: string): Promise<Uint8Array | null> {
+    const adapter = this.app.vault.adapter;
+    if (!(await adapter.exists(path, true))) return null;
+    return new Uint8Array(await adapter.readBinary(path));
   }
 
   async write(path: string, data: Uint8Array): Promise<void> {

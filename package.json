@@ -1,6 +1,6 @@
 {
   "name": "obsidian-note-backup",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "笔记备份：只登录一次 GitHub，剩下的它自己做",
   "private": true,
   "type": "module",

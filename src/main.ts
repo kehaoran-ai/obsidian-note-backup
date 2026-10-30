@@ -118,6 +118,8 @@ export default class NoteBackupPlugin extends Plugin {
 
   onunload() {
     if (this.timer) window.clearTimeout(this.timer);
+    /* 插件被关或重载：正在跑的那一轮停在两次请求之间，别和新加载的插件抢着写 */
+    this.stopper?.abort();
   }
 
   /* ---------- 存取 ---------- */
@@ -212,6 +214,8 @@ export default class NoteBackupPlugin extends Plugin {
         ignore: (path) => this.ignore(path),
         /* 每传完一段就存进度：中途暂停或断网，下次从这里接着 */
         checkpoint: () => this.saveState(),
+        /* 同一个笔记库同一时间只跑一轮，重新登录换了引擎、插件重载也一样 */
+        lock: this.app.vault.getName(),
       },
       this.state,
     );
@@ -394,6 +398,8 @@ export default class NoteBackupPlugin extends Plugin {
       await this.saveState();
       if (r.clashes.length) new Notice(`${r.clashes.length} 篇两边都改了，先用了较新的版本。点状态栏的黄点处理`);
       if (r.skipped.length) console.warn("笔记备份：太大没备份", r.skipped);
+      if (r.stale) console.warn("笔记备份：读到的云端还是推之前的旧样子，这一轮不写，下一轮再对");
+      if (r.deferred.length) console.warn("笔记备份：写之前这几篇刚被别的程序改过，没盖掉，下一轮再合", r.deferred);
     } catch (e) {
       console.error("笔记备份", e);
       if (e instanceof NetError) this.problem = { kind: "off", pending: await engine.pending() };

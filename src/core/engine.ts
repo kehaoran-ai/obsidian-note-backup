@@ -1,14 +1,15 @@
 /**
  * [INPUT]: types 的 LocalStore / RemoteStore / SyncState，merge 的三方合并，log 的同步记录，summary 的改动文案
  * [OUTPUT]: Engine.sync 一次完整的备份 + 取回；Engine.pending 还没备份的篇
- * [POS]: core 的心脏。只认「本地、云端、上次两边都认可的版本」三份指纹，不依赖 Obsidian 和 GitHub 的具体实现，可单测
+ * [POS]: core 的心脏。只认「本地、云端、上次两边都认可的版本」三份指纹，不依赖 Obsidian 和 GitHub 的具体实现，可单测。
+ *        外部进程(AI 会话、git)随时在写：同一时间只跑一轮；读到旧的分支头整轮不写；写回前直读磁盘核对，变了就留到下一轮
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { asText, gitBlobSha, utf8 } from "./bytes";
 import { encodeMessage, SyncLog } from "./log";
 import { merge3, pseudoBase } from "./merge";
 import { summarize } from "./summary";
-import type { Clash, FileChange, LocalStore, LogCommit, LogFile, RemoteStore, SyncState, Who } from "./types";
+import type { Clash, FileChange, LocalStore, LogCommit, LogFile, RemoteStore, Skip, SyncState, Who } from "./types";
 
 /** GitHub 单个文件超过 50MB 会警告，超过 100MB 拒收；大文件先跳过 */
 export const MAX_SIZE = 50 * 1024 * 1024;
@@ -24,6 +25,24 @@ const KEEP_BYTES = 64 * 1024 * 1024;
 const CHUNK = 300;
 /** 同时读几篇：读文件是等磁盘，并发能快好几倍 */
 const PARALLEL = 8;
+/** 没写回的记录最多留几条 */
+const MAX_SKIPS = 100;
+
+/*
+ * 同一时间只跑一轮。两轮叠在一起时，后一轮拿着前一轮改到一半的进度比对，会把刚备份的篇当成云端删了。
+ * 队挂在 globalThis 上、按笔记库排：插件重载后旧引擎还在跑的那一轮，和新引擎也排进同一条队。
+ */
+const GATES_KEY = "__noteBackupGates";
+function gates(): Map<string, Promise<unknown>> {
+  const g = globalThis as unknown as Record<string, Map<string, Promise<unknown>>>;
+  return (g[GATES_KEY] ??= new Map());
+}
+function exclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (gates().get(key) ?? Promise.resolve()).then(fn, fn);
+  gates().set(key, run.catch(() => undefined));
+  return run;
+}
+let engines = 0;
 
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>) {
   let i = 0;
@@ -48,6 +67,10 @@ export class Stopped extends Error {
 export interface SyncResult {
   /** 这一轮被暂停打断 */
   stopped?: boolean;
+  /** 读到的分支头比上次自己推上去的还旧(GitHub 接口缓存)，这一轮什么都没做 */
+  stale?: boolean;
+  /** 写之前外部进程刚改过、留到下一轮再合的篇 */
+  deferred: string[];
   up: string[];
   down: string[];
   removedLocal: string[];
@@ -70,6 +93,8 @@ export interface EngineDeps {
   checkpoint?: () => Promise<void>;
   /** 一段最多几篇，测试里调小 */
   chunk?: number;
+  /** 排队用的笔记库名：同名的同一时间只跑一轮。不给就每个引擎各排各的(测试里一个进程模拟几台设备) */
+  lock?: string;
   now?: () => number;
 }
 
@@ -100,12 +125,19 @@ interface Writeback {
 export class Engine {
   private now: () => number;
 
+  private lock: string;
+
   constructor(private deps: EngineDeps, public state: SyncState) {
     this.now = deps.now ?? Date.now;
+    this.lock = deps.lock ?? `engine-${++engines}`;
   }
 
   /** 本地变了、还没备份的篇 */
-  async pending(): Promise<string[]> {
+  pending(): Promise<string[]> {
+    return exclusive(this.lock, () => this.pendingNow());
+  }
+
+  private async pendingNow(): Promise<string[]> {
     const { files } = await this.scan();
     const st = this.state;
     const out = new Set<string>();
@@ -114,7 +146,11 @@ export class Engine {
     return [...out];
   }
 
-  async sync(onProgress?: (p: Progress) => void, signal?: AbortSignal): Promise<SyncResult> {
+  sync(onProgress?: (p: Progress) => void, signal?: AbortSignal): Promise<SyncResult> {
+    return exclusive(this.lock, () => this.syncNow(onProgress, signal));
+  }
+
+  private async syncNow(onProgress?: (p: Progress) => void, signal?: AbortSignal): Promise<SyncResult> {
     for (let attempt = 0; attempt < 4; attempt++) {
       const r = await this.once(onProgress, signal);
       if (r) return r;
@@ -125,6 +161,11 @@ export class Engine {
   /** 这篇参不参与同步：点开头的文件夹和 .gitignore 里的都不参与 */
   private keep(p: string): boolean {
     return keepPath(p) && !this.deps.ignore?.(p);
+  }
+
+  private skip(path: string | null, why: Skip["why"]) {
+    const st = this.state;
+    st.skips = [...(st.skips ?? []), { path, at: this.now(), why }].slice(-MAX_SKIPS);
   }
 
   private whoOf(p: string): Who {
@@ -179,6 +220,15 @@ export class Engine {
 
     const head = await remote.head();
     if (!head) throw new Error("云端备份还没建好");
+    /*
+     * 读到的分支头比上次自己推上去的还旧：GitHub 的读接口缓存 60 秒，刚推完紧跟的一轮会读到推之前的值。
+     * 拿旧的云端比，刚备份的篇会被当成「云端删了 / 云端改回去了」，写回本地就是把新文件丢进回收站、把新版改回旧版。
+     * 这一轮什么都不做，等缓存过期的下一轮。没见过的提交是别的设备新推的，不用问 GitHub。
+     */
+    if (st.head && head !== st.head && log.seen.has(head) && (await remote.isBehind(head, st.head))) {
+      this.skip(null, "stale");
+      return { stale: true, up: [], down: [], removedLocal: [], removedRemote: [], clashes: [], skipped: [], deferred: [], commits: [] };
+    }
     if (head !== st.head) await log.pull(remote, head);
     let tree: string;
     let remoteFiles: Record<string, string>;
@@ -345,19 +395,29 @@ export class Engine {
       /* 停了：取回和写回留到下次 */
       const up = made.flatMap((m) => m.files.filter((f) => f.h).map((f) => f.p));
       if (made.length) st.last = { at: this.now(), files: up };
-      return { stopped, up, down: [], removedLocal: [], removedRemote: [], clashes: [], skipped, commits: made };
+      return { stopped, up, down: [], removedLocal: [], removedRemote: [], clashes: [], skipped, deferred: [], commits: made };
     }
 
-    /* 写回本地(几篇一起写)。写之前本地又变了的不写，下次再合 */
+    /*
+     * 写回本地(几篇一起写)。写之前本地又变了的不写，下次再合。
+     * 修改时间和大小是 Obsidian 缓存的，外部进程刚写完时还是旧的；所以再直读磁盘算一次指纹，和扫描时对不上也不写
+     */
     const removedLocal: string[] = [];
     const down: string[] = [];
+    const deferred: string[] = [];
     let wrote = 0;
     await pool(writes, 4, async (w) => {
       if (signal?.aborted) return;
       onProgress?.({ phase: "down", done: wrote++, total: writes.length });
       const now = await local.stat(w.path);
       const exp = w.expect;
-      if (now ? !exp || now.mtime !== exp.m || now.size !== exp.s : exp) return;
+      const disk = await local.peek(w.path);
+      const moved = now ? !exp || now.mtime !== exp.m || now.size !== exp.s : exp;
+      if (moved || (disk ? await gitBlobSha(disk) : null) !== (exp?.h ?? null)) {
+        deferred.push(w.path);
+        this.skip(w.path, "changed");
+        return;
+      }
       if (w.sha === null && !w.data) {
         await local.remove(w.path);
         delete nextBase[w.path];
@@ -376,6 +436,7 @@ export class Engine {
     });
     down.sort();
     removedLocal.sort();
+    deferred.sort();
     if (writes.length) onProgress?.({ phase: "down", done: writes.length, total: writes.length });
 
     st.head = parent;
@@ -393,6 +454,7 @@ export class Engine {
       removedRemote: changes.filter((c) => !c.data).map((c) => c.path),
       clashes,
       skipped,
+      deferred,
       commits: made,
     };
   }
@@ -422,6 +484,8 @@ export class Engine {
     const themLabel = { dev: rv?.dev ?? "另一台设备", t: rm, who: rv?.who ?? ("ai" as Who) };
     const mt = asText(mine);
     const tt = asText(theirs);
+    /* 合并用的是刚读的真内容；写回前按它核对，扫描时的指纹可能是缓存 */
+    const expect = { ...mineEntry, h: await gitBlobSha(mine) };
 
     if (mt !== null && tt !== null) {
       const baseText = b ? asText(await remote.readBlob(b)) ?? "" : pseudoBase(mt, tt);
@@ -446,7 +510,7 @@ export class Engine {
       } else if (sha !== r) {
         out.changes.push({ path: p, data: merged, who, t: Math.max(lm, rm), s: "两边的改动合在一起" });
       }
-      if (sha !== mineEntry.h) out.writes.push({ path: p, data: merged, sha, expect: mineEntry });
+      if (sha !== expect.h) out.writes.push({ path: p, data: merged, sha, expect });
       return;
     }
 
@@ -457,8 +521,8 @@ export class Engine {
     } else {
       out.lost.push({ path: p, data: mine, who, t: lm, s: "换了内容 · 被盖掉了", k: "lost" });
       out.changes.push({ path: p, data: theirs, who, t: rm, s: `用了较新的${themLabel.dev}版 · 现在用的这版`, k: "won" });
-      out.clashes.push({ path: p, at: this.now(), binary: true, base: "", loser: mineEntry.h, loserLabel: meLabel, winnerLabel: themLabel, count: 1 });
-      out.writes.push({ path: p, data: theirs, sha: r, expect: mineEntry });
+      out.clashes.push({ path: p, at: this.now(), binary: true, base: "", loser: expect.h, loserLabel: meLabel, winnerLabel: themLabel, count: 1 });
+      out.writes.push({ path: p, data: theirs, sha: r, expect });
     }
   }
 }

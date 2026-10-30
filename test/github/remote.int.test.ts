@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 环境变量 NB_TEST_TOKEN(跑之前从 `gh auth token` 临时取，不落盘)、NB_TEST_REPO(默认 note-backup-test-p193)
- * [OUTPUT]: 对真 GitHub 的集成测试：建私有备份、第一次备份、第二台设备取回、冲突、读回记录
+ * [OUTPUT]: 对真 GitHub 的集成测试：建私有备份、第一次备份、第二台设备取回、冲突、读到旧分支头不写、读回记录
  * [POS]: 证明 github/remote 对真接口可用；只写私有测试仓库，不碰正式备份
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -76,6 +76,20 @@ describe.skipIf(!token)("真 GitHub", () => {
     /* 两边追平 */
     await b.engine.sync();
     expect(b.local.text(`${dir}/周计划.md`)).toBe(a.local.text(`${dir}/周计划.md`));
+
+    /* 读到的分支头是旧的：真 GitHub 认得出它是现在的祖先，反过来不算 */
+    const now = (await remote.head()) as string;
+    expect(await remote.isBehind(head, now)).toBe(true);
+    expect(await remote.isBehind(now, head)).toBe(false);
+    /* 旧分支头喂给已经追平的 a：整轮不写，本地不被改回 */
+    const before = a.local.text(`${dir}/周计划.md`);
+    const realHead = remote.head.bind(remote);
+    remote.head = async () => head;
+    const r5 = await a.engine.sync();
+    remote.head = realHead;
+    expect(r5.stale).toBe(true);
+    expect(a.local.text(`${dir}/周计划.md`)).toBe(before);
+    expect(a.local.text(`${dir}/图片.png`)).toBe("\u0000\u0001PNG 假图");
 
     const d = await describeBackup(remote);
     expect(d?.count).toBeGreaterThanOrEqual(3);

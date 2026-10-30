@@ -1,6 +1,6 @@
 /**
  * [INPUT]: api 的 GitHubApi，core 的 RemoteStore 契约与字节工具
- * [OUTPUT]: GitHubRemote 云端备份的读写(写内容主动限速、可在请求之间暂停)；openBackup 找到或新建「我的笔记备份」；describeBackup 已有备份的篇数和上次备份
+ * [OUTPUT]: GitHubRemote 云端备份的读写(读分支头不走缓存、能判断读到的分支头是不是旧的；写内容主动限速、可在请求之间暂停)；openBackup 找到或新建「我的笔记备份」；describeBackup 已有备份的篇数和上次备份
  * [POS]: github 的存储层。纯 JavaScript 直连 GitHub 的 Git 数据接口，不依赖本机 Git，所以手机也能用
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -58,9 +58,19 @@ export class GitHubRemote implements RemoteStore {
     return `/repos/${this.owner}/${this.repo}`;
   }
 
+  /**
+   * GitHub 读接口回 Cache-Control: max-age=60，Obsidian 的 requestUrl 会照着缓存；
+   * 推完紧跟的一轮读到的还是推之前的值。带 no-cache 让它每次去问 GitHub(没变时回 304，不占限流)
+   */
   async head(): Promise<string | null> {
-    const ref = await this.api.json<{ object: { sha: string } }>("GET", `${this.R}/git/ref/heads/${this.branch}`, undefined, [404, 409]);
+    const ref = await this.api.json<{ object: { sha: string } }>("GET", `${this.R}/git/ref/heads/${this.branch}`, undefined, [404, 409], { "Cache-Control": "no-cache" });
     return ref?.object.sha ?? null;
+  }
+
+  async isBehind(sha: string, than: string): Promise<boolean> {
+    /* compare/A...B 的 ahead 是 B 在 A 之后：than 在 sha 之后，sha 就是旧的 */
+    const c = await this.api.json<{ status: string }>("GET", `${this.R}/compare/${sha}...${than}`, undefined, [404]);
+    return c?.status === "ahead";
   }
 
   /** 空仓库没法用 Git 数据接口，先放一个说明文件做第一次备份 */

@@ -37,6 +37,10 @@ class FileRemote implements RemoteStore {
     return JSON.parse(fs.readFileSync(`${this.dir}/commits/${sha}.json`, "utf8"));
   }
   async head() {
+    if (this.stale && this.stale.times-- > 0) return this.stale.sha;
+    return this.realHead();
+  }
+  realHead() {
     return fs.readFileSync(`${this.dir}/head`, "utf8").trim();
   }
   async tree(commit: string) {
@@ -63,8 +67,15 @@ class FileRemote implements RemoteStore {
     const sha = this.put(tree, message, parent);
     return { commit: sha, tree: `t:${sha}` };
   }
+  /** 测试钩子：接下来几次读分支头读到这个旧值，模拟 GitHub 接口 60 秒缓存 */
+  stale: { sha: string; times: number } | null = null;
+  async isBehind(sha: string, than: string) {
+    let c: string | null = this.commit(than).parent;
+    while (c && c !== sha) c = this.commit(c).parent;
+    return c === sha;
+  }
   async moveHead(to: string, from: string) {
-    if ((await this.head()) !== from) return false;
+    if (this.realHead() !== from) return false;
     fs.writeFileSync(`${this.dir}/head`, to);
     return true;
   }
@@ -94,6 +105,7 @@ async function plug(plugin: any, dir: string, device: string, defaultWho: "me" |
       device: () => plugin.settings.device,
       defaultWho,
       checkpoint: () => plugin.saveState(),
+      lock: `harness:${plugin.app.vault.getName()}`,
     },
     plugin.state,
   );
