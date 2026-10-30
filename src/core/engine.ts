@@ -39,7 +39,12 @@ function gates(): Map<string, Promise<unknown>> {
 }
 function exclusive<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const run = (gates().get(key) ?? Promise.resolve()).then(fn, fn);
-  gates().set(key, run.catch(() => undefined));
+  /* 出错照样抛给调用方(返回的是 run)；排队的下一轮只等它结束，不管成败 */
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  gates().set(key, settled);
   return run;
 }
 let engines = 0;

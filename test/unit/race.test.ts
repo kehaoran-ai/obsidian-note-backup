@@ -54,6 +54,37 @@ describe("云端分支头读到旧值(GitHub 接口缓存 60 秒)", () => {
   });
 });
 
+describe("云端分支头读到旧值：边界与失败", () => {
+  it("第一次用(还没推过)：不做旧值判断，照常备份", async () => {
+    const a = device("Mac");
+    let asked = 0;
+    remote.isBehind = async () => (asked++, true);
+    a.local.put("卡.md", "第一版");
+    const r = await a.engine.sync();
+    expect(asked).toBe(0);
+    expect(r.stale).toBeUndefined();
+    expect(await remote.textAtHead("卡.md")).toBe("第一版");
+  });
+
+  it("问 GitHub 是不是旧值时断网：这一轮报错，本地一篇不动", async () => {
+    const a = device("Mac");
+    a.local.put("卡.md", "第一版");
+    await a.engine.sync();
+    const old = remote.headSha as string;
+    a.local.put("卡.md", "第二版");
+    await a.engine.sync();
+    remote.stale = { sha: old, times: 1 };
+    remote.isBehind = async () => {
+      throw new Error("断网了");
+    };
+    await expect(a.engine.sync()).rejects.toThrow("断网了");
+    expect(a.local.text("卡.md")).toBe("第二版");
+    /* 出错的那一轮没把队堵死，下一轮照常 */
+    remote.isBehind = MemRemote.prototype.isBehind.bind(remote);
+    expect((await a.engine.sync()).stale).toBeUndefined();
+  });
+});
+
 describe("外部进程刚写完，Obsidian 还没察觉", () => {
   it("取回时本地刚被改过：不盖掉，下一轮两边合在一起", async () => {
     const a = device("Mac");
