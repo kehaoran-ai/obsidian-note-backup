@@ -1,6 +1,6 @@
 /**
  * [INPUT]: core 引擎与记录，github 的登录与云端，obsidian 层的笔记库与归属判定，ui 的四屏
- * [OUTPUT]: NoteBackupPlugin 插件本体：存取状态、连上 GitHub、自动备份与取回的调度、状态汇总给界面
+ * [OUTPUT]: NoteBackupPlugin 插件本体：存取状态、连上 GitHub、自动备份与取回的调度、状态汇总给界面；Status 界面状态形状
  * [POS]: 项目入口与总调度。用户只做一步(登录 GitHub)，其余全自动都从这里发起
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */

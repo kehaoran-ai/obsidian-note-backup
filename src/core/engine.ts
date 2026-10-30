@@ -1,6 +1,6 @@
 /**
- * [INPUT]: types 的 LocalStore / RemoteStore / SyncState，merge 的三方合并，log 的同步记录，summary 的改动文案
- * [OUTPUT]: Engine.sync 一次完整的备份 + 取回；Engine.pending 还没备份的篇
+ * [INPUT]: bytes 的指纹与文本判定，types 的 LocalStore / RemoteStore / SyncState，merge 的三方合并，log 的同步记录，summary 的改动文案
+ * [OUTPUT]: Engine(sync 一次完整的备份 + 取回，pending 还没备份的篇)；EngineDeps、SyncResult、Progress 形状；Stopped 暂停信号；MAX_SIZE 单篇上限；keepPath 路径过滤
  * [POS]: core 的心脏。只认「本地、云端、上次两边都认可的版本」三份指纹，不依赖 Obsidian 和 GitHub 的具体实现，可单测。
  *        外部进程(AI 会话、git)随时在写：同一时间只跑一轮；读到旧的分支头整轮不写；写回前直读磁盘核对，变了就留到下一轮
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

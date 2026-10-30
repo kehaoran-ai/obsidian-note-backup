@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 无
- * [OUTPUT]: 同步引擎的全部数据形状：本地库、云端库、同步状态、同步记录、两边都改了、没写回的记录
+ * [OUTPUT]: 同步引擎的全部数据形状：Who、LocalEntry、LocalStore、FileChange、RemoteCommit、RemoteStore、LogFile、LogCommit、Clash、SyncState、Skip；emptyState 空的同步进度
  * [POS]: core 的契约层，engine / log / github / obsidian 四方都只依赖这里的形状
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */

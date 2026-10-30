@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Obsidian 的 App(vault、fileManager)
+ * [INPUT]: Obsidian 的 App(vault、vault.adapter、fileManager)，core 的文本判定与 LocalStore 契约
  * [OUTPUT]: VaultStore 把笔记库包成引擎认的 LocalStore
  * [POS]: obsidian 层的本地读写。只走 vault 接口，电脑和手机同一套；peek 绕开文件信息缓存直读磁盘；删除进回收站，不直接抹掉
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md

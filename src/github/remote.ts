@@ -1,6 +1,6 @@
 /**
  * [INPUT]: api 的 GitHubApi，core 的 RemoteStore 契约与字节工具
- * [OUTPUT]: GitHubRemote 云端备份的读写(读分支头不走缓存、能判断读到的分支头是不是旧的；写内容主动限速、可在请求之间暂停)；openBackup 找到或新建「我的笔记备份」；describeBackup 已有备份的篇数和上次备份
+ * [OUTPUT]: GitHubRemote 云端备份的读写(读分支头不走缓存、能判断读到的分支头是不是旧的；写内容主动限速、可在请求之间暂停)；openBackup 找到或新建「我的笔记备份」；describeBackup 已有备份的篇数和上次备份；REPO_NAME 备份仓库名；PublicRepoError 同名仓库是公开的
  * [POS]: github 的存储层。纯 JavaScript 直连 GitHub 的 Git 数据接口，不依赖本机 Git，所以手机也能用
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */

@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 外部注入的 Http(Obsidian 里是 requestUrl，测试里是 fetch)
- * [OUTPUT]: GitHubApi 带登录凭证的 REST 调用；NetError 没网；AuthError 登录失效
+ * [OUTPUT]: GitHubApi 带登录凭证的 REST 调用(可附加请求头)；NetError 没网；AuthError 登录失效；ApiError 其余错误；API 接口地址；Http、HttpRequest、HttpResponse 传输形状
  * [POS]: github 的传输层。只管发请求和把错误分成三类，不懂备份是什么
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */

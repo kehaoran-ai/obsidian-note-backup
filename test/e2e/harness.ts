@@ -1,5 +1,5 @@
 /**
- * [INPUT]: Node fs(只在电脑版 Obsidian 的渲染进程里跑)，core 的 Engine / RemoteStore 契约
+ * [INPUT]: Node fs(只在电脑版 Obsidian 的渲染进程里跑)，core 的指纹、Engine、RemoteStore 契约，obsidian 层的 VaultStore
  * [OUTPUT]: window.NBHarness：FileRemote(放在本机文件夹里的假云端，两个测试实例共用)与 plug(把插件接到假云端)
  * [POS]: 端到端测试的替身。真 GitHub 接口由 test/github 覆盖；这里只验插件界面 + 笔记库 + 引擎的整条链，不碰任何登录凭证
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
