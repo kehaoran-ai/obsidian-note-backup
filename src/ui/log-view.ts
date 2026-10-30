@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 插件本体的 log(同步记录)与 state.clashes(两边都改了)
- * [OUTPUT]: LogView 同步记录：按天分组，一篇一张卡，一行一次改动，灰线是我、蓝线是 AI，可按全部 / 我 / AI 筛
+ * [OUTPUT]: LogView 同步记录：按天串成一棵树：一天是根，主干串起当天每一篇，每篇分出自己的改动；点的颜色分我、AI、两边都改了，可按全部 / 我 / AI 筛
  * [POS]: 设计稿第 3 屏左半。以篇为核心：先看哪篇，再看改了什么，最后看谁改的；点一行进历史版本
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -28,7 +28,7 @@ const MAX_DAYS = 60;
 /** 一次画几张卡 */
 const PAGE = 40;
 
-/** 两条线：左灰线是我，右蓝线是 AI；同一条线从这篇第一次出现连到最后一次 */
+/** 这一行是谁改的：画一个点，颜色在 styles.css 的树那一段 */
 function lanes(el: HTMLElement, rows: Row[], k: number) {
   const span: Partial<Record<Who, [number, number]>> = {};
   rows.forEach((r, i) => {
@@ -139,6 +139,8 @@ export class LogView extends ItemView {
     const row = head.createDiv({ cls: "nb-row" });
     row.createEl("b", { text: "同步记录" });
     const well = row.createDiv({ cls: "nb-well is-sm" });
+    /* 没连上时没什么可筛的，也没有备份状态可说 */
+    if (!this.plugin.connected) well.hide();
     for (const [f, label] of [["all", "全部"], ["me", "我"], ["ai", "AI"]] as [Filter, string][]) {
       const b = well.createEl("button", { text: label, cls: this.filter === f ? "is-on" : "" });
       b.addEventListener("click", () => {
@@ -149,7 +151,7 @@ export class LogView extends ItemView {
         logs.scrollTop = 0;
       });
     }
-    head.createEl("small", { text: barText(this.plugin.status) });
+    if (this.plugin.connected) head.createEl("small", { text: barText(this.plugin.status) });
     const logs = el.createDiv({ cls: "nb-logs" });
     logs.addEventListener("scroll", () => this.onScroll?.(), { passive: true });
     this.renderList(logs, keepShown);

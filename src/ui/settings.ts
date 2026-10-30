@@ -26,7 +26,7 @@ export class SettingsTab extends PluginSettingTab {
               await plugin.disconnect();
               this.display();
             })
-          : b.setButtonText("登录 GitHub").setCta().onClick(() => plugin.openLogin()),
+          : b.setButtonText("登录 GitHub").setCta().setClass("nb-btn").onClick(() => plugin.openLogin()),
       );
     new Setting(el)
       .setName("这台设备的名字")

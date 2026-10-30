@@ -1,6 +1,6 @@
 /**
  * [INPUT]: 插件本体的 log.versions(某篇的每一版)、remote.readBlob(取某一版内容)、writeAsMe(恢复)
- * [OUTPUT]: HistoryView 某篇的历史版本：左边每一版，右边内容(和现在不一样的行灰底)，可恢复，可撤销
+ * [OUTPUT]: HistoryView 某篇的历史版本：左边按天串成树，每一版一个节点，右边内容(和现在不一样的行灰底)，可恢复，可撤销
  * [POS]: 设计稿第 3 屏右半。恢复不删现在这版：恢复本身也是一次备份，现在那版留在历史里
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -134,12 +134,15 @@ export class HistoryView extends ItemView {
     const lines = prev.createDiv({ cls: "nb-lines" });
     const foot = prev.createDiv({ cls: "nb-prev-f" });
     const note = foot.createSpan();
-    const legend = note.createSpan({ cls: "nb-legend" });
-    legend.createEl("i");
-    legend.appendText("灰底 = 和现在不一样的行");
-    note.createEl("br");
-    const tip = note.createSpan();
     const isNow = v.h !== null && v.h === this.current.sha;
+    /* 灰底只在看旧版时才有，其他时候不解释 */
+    if (v.h !== null && !isNow) {
+      const legend = note.createSpan({ cls: "nb-legend" });
+      legend.createEl("i");
+      legend.appendText("灰底 = 和现在不一样的行");
+      note.createEl("br");
+    }
+    const tip = note.createSpan();
     tip.setText(v.h === null ? "这一版是删掉的。" : isNow ? "这就是现在的版本。点左边一版看看。" : "恢复后，现在这版留在历史里。");
     const btn = button(foot, "恢复这个版本", "primary", () => void this.restore(v));
     btn.disabled = v.h === null || isNow;

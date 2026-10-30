@@ -243,7 +243,7 @@ docs/ - 设计说明(外部写入保护.md：改前改后模块图)，e2e/ 端�
 manifest.json - Obsidian 插件清单：id note-backup，isDesktopOnly false(电脑手机都能装)，minAppVersion 1.8.7
 package.json - 脚本：build(tsc + esbuild)、test(单测)、test:github(真 GitHub，需环境变量 NB_TEST_TOKEN)
 esbuild.config.mjs - 把 src/main.ts 打成 main.js(cjs，obsidian 外置)
-styles.css - 全部样式；颜色只取 Obsidian 主题变量，跟随用户主题
+styles.css - 全部样式；视觉照工作台设计系统，令牌和字体内置，不跟随用户主题的配色，深浅色跟随 Obsidian
 tsconfig.json - 严格模式；只做类型检查，打包交给 esbuild
 </config>
 铁律:
