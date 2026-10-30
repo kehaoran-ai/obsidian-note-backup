@@ -237,7 +237,7 @@ TypeScript + Obsidian 插件 API + GitHub REST(Git 数据接口) + node-diff3 + 
 <directory>
 src/ - 插件源码 (4子目录: core 纯逻辑可单测, github 接口与登录, obsidian 笔记库适配, ui 四屏界面)
 test/ - 测试 (3子目录: unit 内存替身单测, github 真接口集成测试, e2e 本机测试实例的替身云端)
-docs/e2e/ - 端到端截图(电脑 d*，手机 m*)
+docs/ - 设计说明(外部写入保护.md：改前改后模块图)，e2e/ 端到端截图(电脑 d*，手机 m*)
 </directory>
 <config>
 manifest.json - Obsidian 插件清单：id note-backup，isDesktopOnly false(电脑手机都能装)，minAppVersion 1.8.7
